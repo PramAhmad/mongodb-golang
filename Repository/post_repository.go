@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"log"
+	"os"
 	"strconv"
 	"time"
 
@@ -16,7 +17,7 @@ var client *mongo.Client
 
 func init() {
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
-	opts := options.Client().ApplyURI("mongodb+srv://pramudita:tasikmalaya123..@sisfor23.u6a0v29.mongodb.net/?retryWrites=true&w=majority").SetServerAPIOptions(serverAPI)
+	opts := options.Client().ApplyURI(os.Getenv("keymongo")).SetServerAPIOptions(serverAPI)
 
 	var err error
 	client, err = mongo.Connect(context.TODO(), opts)
@@ -37,9 +38,8 @@ func GetPost(c *gin.Context) {
 	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
 	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "40"), 10, 64)
 	skip := (page - 1) * limit
-
 	collection := client.Database("myappdb").Collection("posts")
-	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second) // Set a timeout
+	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
 	defer cancel()
 
 	cursor, err := collection.Find(ctx, bson.D{}, &options.FindOptions{
@@ -75,7 +75,7 @@ func SendPost(c *gin.Context) {
 	}
 
 	collection := client.Database("myappdb").Collection("posts")
-	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second) // Set a timeout
+	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
 	defer cancel()
 
 	res, err := collection.InsertOne(ctx, body)
