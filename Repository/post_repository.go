@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -32,53 +33,112 @@ func init() {
 }
 
 func GetPost(c *gin.Context) {
-	// binding page from params
-	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
-	if err != nil {
-		c.JSON(400, gin.H{"error": "invalid page"})
-		return
-	}
-	postCollection := client.Database("myappdb").Collection("posts")
-	cursor, err := postCollection.Find(context.Background(), bson.M{})
-	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-	defer cursor.Close(context.Background())
+	// paging post 100 data
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
+	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "40"), 10, 64)
+	skip := (page - 1) * limit
 
-	// paging per page100 data
-	var posts []bson.M
-	for cursor.Next(context.Background()) {
-		var post bson.M
-		if err = cursor.Decode(&post); err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
-			return
-		}
-		posts = append(posts, post)
-	}
-	// get  data
-	totalData, err := postCollection.CountDocuments(context.Background(), bson.M{})
+	collection := client.Database("myappdb").Collection("posts")
+	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second) // Set a timeout
+	defer cancel()
+
+	cursor, err := collection.Find(ctx, bson.D{}, &options.FindOptions{
+		Skip:  &skip,
+		Limit: &limit,
+	})
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		c.JSON(500, gin.H{"message": err.Error()})
 		return
 	}
-	// get total
-	totalPage := totalData / 100
-	if totalData%100 != 0 {
-		totalPage++
+
+	var posts []bson.M
+	if err = cursor.All(ctx, &posts); err != nil {
+		c.JSON(500, gin.H{"message": err.Error()})
+		return
 	}
-	// get  per page
-	var dataPerPage []bson.M
-	for i := 0; i < 100; i++ {
-		if i+(page-1)*100 < len(posts) {
-			dataPerPage = append(dataPerPage, posts[i+(page-1)*100])
-		}
-	}
-	// response
+
 	c.JSON(200, gin.H{
-		"totalData":   totalData,
-		"totalPage":   totalPage,
-		"dataPerPage": dataPerPage,
+		"message": "success",
+		"data":    posts,
+		"total":   len(posts),
+		"page":    page,
+		"limit":   limit,
 	})
 
+}
+
+func SendPost(c *gin.Context) {
+	var body bson.M
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"message": err.Error()})
+		return
+	}
+
+	collection := client.Database("myappdb").Collection("posts")
+	ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second) // Set a timeout
+	defer cancel()
+
+	res, err := collection.InsertOne(ctx, body)
+	if err != nil {
+		c.JSON(500, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "success",
+		"data": res})
+
+}
+
+func ShowPost(c *gin.Context) {
+	id := c.Param("id")
+
+	collection := client.Database("myappdb").Collection("posts")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var post bson.M
+	err := collection.FindOne(ctx, bson.M{"_id": id}).Decode(&post)
+	if err != nil {
+		c.JSON(500, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "success", "data": post})
+}
+
+func UpdatePost(c *gin.Context) {
+	id := c.Param("id")
+	var body bson.M
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(400, gin.H{"message": err.Error()})
+		return
+	}
+
+	collection := client.Database("myappdb").Collection("posts")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := collection.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": body})
+	if err != nil {
+		c.JSON(500, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "success"})
+}
+
+func DeletePost(c *gin.Context) {
+	id := c.Param("id")
+
+	collection := client.Database("myappdb").Collection("posts")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := collection.DeleteOne(ctx, bson.M{"_id": id})
+	if err != nil {
+		c.JSON(500, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "success"})
 }
